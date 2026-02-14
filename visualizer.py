@@ -170,7 +170,8 @@ class GachaVisualizer:
     
     def plot_user_spending_comparison(self, all_strategies_data: Dict, num_pools: int, save_path: str = None):
         """
-        绘制各策略用户每UP实际投入对比（箱线图）
+        绘制各策略用户实际消耗抽数对比（箱线图）
+        显示基准、限时福利和永久福利三种情况下的实际消耗抽数
         """
         if not MATPLOTLIB_AVAILABLE:
             return
@@ -187,12 +188,12 @@ class GachaVisualizer:
         for strategy_name in strategies:
             data = all_strategies_data[strategy_name]
             
-            # 计算每UP实际投入（总花费/获得的UP数）
-            baseline_per_up = [r['user_spent'] / r['num_targets'] for r in data['baseline']]
-            limited_per_up = [r['user_spent'] / r['num_targets'] for r in data['limited']]
-            permanent_per_up = [r['user_spent'] / r['num_targets'] for r in data['permanent']]
+            # 获取实际消耗的抽数
+            baseline_spent = [r['user_spent'] for r in data['baseline']]
+            limited_spent = [r['user_spent'] for r in data['limited']]
+            permanent_spent = [r['user_spent'] for r in data['permanent']]
             
-            all_data.extend([baseline_per_up, limited_per_up, permanent_per_up])
+            all_data.extend([baseline_spent, limited_spent, permanent_spent])
             labels.extend([f'{strategy_name}\n(无福利)', f'{strategy_name}\n(限时)', f'{strategy_name}\n(永久)'])
             positions.extend([pos, pos+1, pos+2])
             pos += 4
@@ -216,8 +217,8 @@ class GachaVisualizer:
             box.set_alpha(0.75)
         
         ax.set_xlabel('策略', fontsize=13, fontweight='bold')
-        ax.set_ylabel('每UP实际投入（抽）', fontsize=13, fontweight='bold')
-        ax.set_title(f'各策略每UP实际投入分布对比({num_pools}个卡池)', fontsize=15, fontweight='bold', pad=20)
+        ax.set_ylabel('实际消耗（抽）', fontsize=13, fontweight='bold')
+        ax.set_title(f'各策略用户实际消耗抽数分布对比({num_pools}个卡池)', fontsize=15, fontweight='bold', pad=20)
         ax.set_xticks(positions)
         ax.set_xticklabels(labels, fontsize=9, rotation=30, ha='right')  # 倾斜x轴文字
         
@@ -302,10 +303,10 @@ class GachaVisualizer:
         
         plt.close()
     
-    def plot_pity_distribution(self, all_strategies_data: Dict, num_pools: int, save_path: str = None):
+    def plot_pity_distribution_histogram(self, all_strategies_data: Dict, num_pools: int, save_path: str = None):
         """
-        绘制小保底水位分布直方图
-        显示所有卡池结束时小保底水位的分布情况，标注范围和概率
+        绘制小保底水位直方图分布（以10为间隔）
+        显示所有卡池结束时小保底水位的分布情况
         """
         if not MATPLOTLIB_AVAILABLE:
             return
@@ -341,32 +342,31 @@ class GachaVisualizer:
                     
                     # 计算每个区间的概率
                     hist, _ = np.histogram(all_pity_values, bins=bins)
-                    hist_percent = (hist / len(all_pity_values)) * 100  # 转换为百分比
+                    hist_prob = hist / len(all_pity_values)  # 转换为概率（0-1）
                     
                     # 绘制直方图
-                    bars = ax.bar(x_pos + (i - 1) * width, hist_percent, width, 
+                    bars = ax.bar(x_pos + (i - 1) * width, hist_prob, width, 
                                   label=mode_name, color=color, alpha=0.85, 
                                   edgecolor='white', linewidth=1.5)
                     
-                    # 标注概率（只标注大于1%的）
-                    for j, (bar, prob) in enumerate(zip(bars, hist_percent)):
-                        if prob > 1.0:  # 只标注概率大于1%的
+                    # 标注概率（只标注大于0.01的）
+                    for j, (bar, prob) in enumerate(zip(bars, hist_prob)):
+                        if prob > 0.01:  # 只标注概率大于1%的
                             height = bar.get_height()
                             ax.text(bar.get_x() + bar.get_width()/2., height,
-                                   f'{prob:.1f}%',
+                                   f'{prob:.2f}',
                                    ha='center', va='bottom', fontsize=7, rotation=0)
             
             ax.set_xlabel('小保底水位区间', fontsize=11, fontweight='bold')
-            ax.set_ylabel('出现概率 (%)', fontsize=11, fontweight='bold')
+            ax.set_ylabel('出现概率', fontsize=11, fontweight='bold')
             ax.set_title(f'{strategy_name}', fontsize=12, fontweight='bold', pad=10)
             ax.set_xticks(x_pos)
-            ax.set_xticklabels(bin_labels, fontsize=8, rotation=45, ha='right')  # 倾斜x轴标签
+            ax.set_xticklabels(bin_labels, fontsize=8, rotation=45, ha='right')
             ax.legend(fontsize=9, loc='best', frameon=True, shadow=True)
-            ax.set_ylim(0, None)
+            ax.set_ylim(0, 1.0)
             
             # 标记关键水位区间
-            # 65抽递增阈值在第7个区间（60-70）
-            ax.axvspan(6 - 0.5, 8, alpha=0.1, color='orange', label='递增区域(60-80)')
+            ax.axvspan(6 - 0.5, 8, alpha=0.1, color='orange')
             
             sns.despine(ax=ax)
         
@@ -375,6 +375,85 @@ class GachaVisualizer:
             axes[idx].set_visible(False)
         
         plt.suptitle(f'各策略小保底水位分布概率（以10为间隔）({num_pools}个卡池)', fontsize=16, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"图表已保存至: {save_path}")
+        else:
+            plt.savefig('pity_distribution_histogram.png', dpi=300, bbox_inches='tight')
+            print("图表已保存至: pity_distribution_histogram.png")
+        
+        plt.close()
+    
+    def plot_pity_distribution(self, all_strategies_data: Dict, num_pools: int, save_path: str = None):
+        """
+        绘制小保底水位概率分布（使用实际值，不平滑）
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            return
+            
+        strategies = list(all_strategies_data.keys())
+        n_strategies = len(strategies)
+        
+        # 创建图表：2行3列
+        fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+        axes = axes.flatten()
+        
+        for idx, strategy_name in enumerate(strategies):
+            ax = axes[idx]
+            style_axes(ax)
+            data = all_strategies_data[strategy_name]
+            
+            # 定义区间（每1抽为一个区间）
+            bins = np.arange(0, 85, 1)
+            bin_centers = bins[:-1] + 0.5
+            
+            # 为每种福利方案绘制实际分布曲线
+            for mode, mode_name, color in [('baseline', '无福利', self.colors['baseline']),
+                                           ('limited', '限时福利', self.colors['limited']),
+                                           ('permanent', '永久福利', self.colors['permanent'])]:
+                if mode in data and len(data[mode]) > 0 and 'pity_history' in data[mode][0]:
+                    # 收集所有小保底水位数据（所有模拟×所有卡池）
+                    all_pity_values = []
+                    for r in data[mode]:
+                        all_pity_values.extend(r['pity_history'])
+                    
+                    if len(all_pity_values) > 0:
+                        # 计算每个区间的概率
+                        hist, _ = np.histogram(all_pity_values, bins=bins)
+                        hist_prob = hist / len(all_pity_values)  # 转换为概率（0-1）
+                        
+                        # 绘制实际概率分布曲线
+                        ax.plot(bin_centers, hist_prob, label=mode_name, 
+                               color=color, linewidth=1.5, alpha=0.8)
+                        ax.fill_between(bin_centers, hist_prob, alpha=0.3, color=color)
+            
+            ax.set_xlabel('小保底水位', fontsize=11, fontweight='bold')
+            ax.set_ylabel('概率', fontsize=11, fontweight='bold')
+            ax.set_title(f'{strategy_name}', fontsize=12, fontweight='bold', pad=10)
+            ax.set_xlim(0, 80)
+            ax.set_ylim(0, None)
+            ax.legend(fontsize=9, loc='best', frameon=True, shadow=True)
+            
+            # 标记关键水位线
+            ax.axvline(x=65, color='orange', linestyle='--', linewidth=1.5, alpha=0.6, label='递增阈值(65)')
+            ax.axvline(x=80, color='red', linestyle='--', linewidth=1.5, alpha=0.6, label='小保底(80)')
+            
+            # 添加阴影区域标记
+            ax.axvspan(65, 80, alpha=0.08, color='orange')
+            
+            # 更新图例
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(handles, labels, fontsize=9, loc='best', frameon=True, shadow=True)
+            
+            sns.despine(ax=ax)
+        
+        # 隐藏多余的子图
+        for idx in range(n_strategies, len(axes)):
+            axes[idx].set_visible(False)
+        
+        plt.suptitle(f'各策略小保底水位概率密度分布 ({num_pools}个卡池)', fontsize=16, fontweight='bold', y=0.995)
         plt.tight_layout()
         
         if save_path:
@@ -393,83 +472,26 @@ class GachaVisualizer:
         print("=" * 60)
         
         # 1. 福利效率对比
-        print("\n[1/4] 生成福利效率对比图...")
+        print("\n[1/5] 生成福利效率对比图...")
         self.plot_welfare_efficiency_comparison(all_strategies_data, num_pools)
         
         # 2. 用户花费对比
-        print("\n[2/4] 生成用户花费分布图...")
+        print("\n[2/5] 生成用户花费分布图...")
         self.plot_user_spending_comparison(all_strategies_data, num_pools)
         
         # 3. 小保底水位变化
-        print("\n[3/4] 生成小保底水位变化图...")
+        print("\n[3/5] 生成小保底水位变化图...")
         self.plot_pity_history(all_strategies_data, num_pools)
         
-        # 4. 小保底水位分布概率
-        print("\n[4/4] 生成小保底水位分布概率图...")
+        # 4. 小保底水位直方图（10为间隔）
+        print("\n[4/5] 生成小保底水位直方图...")
+        self.plot_pity_distribution_histogram(all_strategies_data, num_pools)
+        
+        # 5. 小保底水位概率密度图
+        print("\n[5/5] 生成小保底水位概率密度图...")
         self.plot_pity_distribution(all_strategies_data, num_pools)
         
         print("\n所有图表生成完成！")
-
-
-def load_simulation_results(file_path: str = 'simulation_results.pkl') -> dict:
-    """
-    加载模拟结果
-    
-    返回: {
-        'all_strategies_data': Dict,
-        'num_pools': int,
-        'config': Dict
-    }
-    """
-    if not os.path.exists(file_path):
-        print(f"错误: 找不到模拟结果文件 '{file_path}'")
-        print("请先运行 'python gacha_simulator.py' 生成模拟数据")
-        sys.exit(1)
-    
-    print(f"正在加载模拟结果: {file_path}")
-    
-    with open(file_path, 'rb') as f:
-        results = pickle.load(f)
-    
-    print(f"✓ 成功加载数据")
-    print(f"  策略数量: {len(results['all_strategies_data'])}")
-    print(f"  模拟池数: {results['num_pools']}")
-    
-    return results
-
-
-def main():
-    """主函数：独立运行可视化模块"""
-    print("=" * 60)
-    print("明日方舟终末地 - 数据可视化工具")
-    print("=" * 60)
-    
-    # 加载模拟结果
-    results = load_simulation_results()
-    
-    all_strategies_data = results['all_strategies_data']
-    num_pools = results['num_pools']
-    config = results['config']
-    
-    # 显示配置信息
-    print("\n模拟配置:")
-    print(f"  • 6星基础概率: {config['base_ssr_rate'] * 100}%")
-    print(f"  • 小保底: {config['small_pity']}抽")
-    print(f"  • 大保底: {config['large_pity']}抽")
-    print(f"  • UP概率: {config['up_rate'] * 100}%")
-    print(f"  • 递增阈值: {config['increase_threshold']}抽")
-    
-    # 生成可视化图表
-    visualizer = GachaVisualizer()
-    visualizer.generate_all_plots(all_strategies_data, num_pools)
-    
-    print("\n" + "=" * 60)
-    print("可视化完成！")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()
 
 
 def load_simulation_results(file_path: str = 'simulation_results.pkl') -> dict:
