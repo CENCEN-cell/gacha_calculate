@@ -336,7 +336,7 @@ class GachaSimulator:
         
         # 检查项
         if self.state.bonus_10_special > 0:
-            assert False, "跳过的池子不应该有30抽赠送"
+            assert False, "跳过的池子不应该够到30抽赠送10抽"
         
         return {
             'pulls': actual_pulls,
